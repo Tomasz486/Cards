@@ -47,7 +47,12 @@ namespace Cards
 
             var generatedId = new SimpleGeneratorId().GenerateUniqueId();
 
-            var dataTable = this.DataConnector.GetSelectedData(generatedId, this.SerialNumberTextBox.Text, this.AccountNumberTextBox.Text);
+            var dataTable = this.DataConnector.GetSelectedData(generatedId, this.SerialNumberTextBox.Text, this.AccountNumberTextBox.Text, out string errorMessage);
+
+            if (errorMessage != null)
+            {
+                MessageBox.Show(errorMessage);
+            }
 
             var dupkicatedFieldName = new FormValidation().CompareDataFromFormAndDatabase(dataTable, this.SerialNumberTextBox.Text, this.AccountNumberTextBox.Text);
             
@@ -57,7 +62,12 @@ namespace Cards
                 return;
             }
 
-            this.DataConnector.AddCard(generatedId, this.PinTextBox.Text, this.SerialNumberTextBox.Text, this.AccountNumberTextBox.Text);
+            this.DataConnector.AddCard(generatedId, this.PinTextBox.Text, this.SerialNumberTextBox.Text, this.AccountNumberTextBox.Text, out errorMessage);
+
+            if (errorMessage != null)
+            {
+                MessageBox.Show(errorMessage);
+            }
 
             this.Close();
         }

@@ -46,7 +46,7 @@ namespace Cards
         /// <summary>
         ///     column labels for gridview.
         /// </summary>
-        private Dictionary<string, string> ColumnLabelsForGridView = new Dictionary<string, string>()
+        private readonly Dictionary<string, string> ColumnLabelsForGridView = new Dictionary<string, string>()
         {
             { "Id", "Identyfikator"},
             { "SerialNumber", "Numer seryjny" },
@@ -61,8 +61,7 @@ namespace Cards
         /// </param>
         private void CreateDatabase(string sufix = "")
         {
-            var connection = new SqlConnection(@"server=(localdb)\v11.0");
-            using (connection)
+            using (var connection = new SqlConnection(@"server=(localdb)\v11.0"))
             {
                 connection.Open();
 
@@ -70,12 +69,17 @@ namespace Cards
 
                 var command = new SqlCommand(sql, connection);
                 command.ExecuteNonQuery();
-
-                connection.Close();
             }
 
-            connection = new SqlConnection(DefaultConnectionString);
-            using (connection)
+            this.CreateTable();
+        }
+
+        /// <summary>
+        ///     Creates table.
+        /// </summary>
+        private void CreateTable()
+        {
+            using (var connection = new SqlConnection(DefaultConnectionString))
             {
                 connection.Open();
                 var command = new SqlCommand(File.ReadAllText("CreateTable.sql"), connection);
@@ -86,37 +90,64 @@ namespace Cards
         /// <summary>
         ///     Create database if not exist.
         /// </summary>
+        /// <param name="errorMessage">
+        ///     The error message.
+        /// </param>
         /// <returns>
-        ///     The erreor message if fails.
+        ///     The error message if fails.
         /// </returns>
-        public string CreateDataBaseIfNotExist()
+        public bool CreateDataBaseIfNotExist(out string errorMessage)
         {
+            errorMessage = null;
+
             try
             {
                 this.CreateDatabase();
-                return null;
+
+                return true;
             }
             catch (Exception ex)
             {
-                if (!File.Exists($"{Directory.GetCurrentDirectory()}\\Cards.mdf"))
-                {
-                    try
-                    {
-                        this.CreateDatabase(new SimpleGeneratorId().GenerateUniqueId());
-                    }
-                    catch (Exception ex2)
-                    {
-                        return ex2.Message;
-                    }
+                return this.TrySolvingProblemsWithDatabase(ex, out errorMessage);
+            }
+        }
 
-                    if (!ex.Message.Contains("already exists. Choose a different database name."))
-                    {
-                        return ex.Message;
-                    }
+        /// <summary>
+        ///     Tries solivng problems with database.
+        /// </summary>
+        /// <param name="exception">
+        ///     The exception to be analyzed.
+        /// </param>
+        /// <param name="errorMessage">
+        ///     The error message.
+        /// </param>
+        /// <returns>
+        ///     Returns true if there is no problems with database.
+        /// </returns>
+        private bool TrySolvingProblemsWithDatabase(Exception exception, out string errorMessage)
+        {
+            errorMessage = null;
+
+            if (!File.Exists($"{Directory.GetCurrentDirectory()}\\Cards.mdf"))
+            {
+                try
+                {
+                    this.CreateDatabase(new SimpleGeneratorId().GenerateUniqueId());
+                }
+                catch (Exception ex2)
+                {
+                    errorMessage = ex2.Message;
+                    return false;
                 }
 
-                return null;
+                if (!exception.Message.Contains("already exists. Choose a different database name."))
+                {
+                    errorMessage = exception.Message;
+                    return false;
+                }
             }
+
+            return true;
         }
 
         /// <summary>
@@ -131,30 +162,31 @@ namespace Cards
         /// <param name="accountNumber">
         ///     The account number.
         /// </param>
+        /// <param name="errorMessage">
+        ///     The error message.
+        /// </param>
         /// <returns>
         ///     Returrns data from database based on arguments.
         /// </returns>
-        public DataTable GetData(string id, string serialNumber, string accountNumber)
+        public DataTable GetData(string id, string serialNumber, string accountNumber, out string errorMessage)
         {
             var dt = new DataTable();
 
-            SqlConnection connection = null;
+            errorMessage = null;
 
             try
             {
-                using (connection = new SqlConnection(DefaultConnectionString))
+                using (var connection = new SqlConnection(DefaultConnectionString))
                 {
-                    using (var command = new SqlCommand(FilteredSelectQuery, connection))
-                    {
-                        command.Parameters.AddWithValue("@id", $"%{id}%");
-                        command.Parameters.AddWithValue("@serialNumber", $"%{serialNumber}%");
-                        command.Parameters.AddWithValue("@accountNumber", $"%{accountNumber}%");
+                    var command = new SqlCommand(FilteredSelectQuery, connection);
+                    command.Parameters.AddWithValue("@id", $"%{id}%");
+                    command.Parameters.AddWithValue("@serialNumber", $"%{serialNumber}%");
+                    command.Parameters.AddWithValue("@accountNumber", $"%{accountNumber}%");
 
-                        connection.Open();
-                        using (var reader = command.ExecuteReader())
-                        {
-                            dt.Load(reader);
-                        }
+                    connection.Open();
+                    using (var reader = command.ExecuteReader())
+                    {
+                        dt.Load(reader);
                     }
                 }
 
@@ -162,16 +194,9 @@ namespace Cards
                     columnName => dt.Columns[columnName].ColumnName = ColumnLabelsForGridView[columnName]
                 );
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-
-            }
-            finally
-            {
-                if (connection != null && connection.State == ConnectionState.Open)
-                {
-                    connection.Close();
-                }
+                errorMessage = ex.Message;
             }
 
             return dt;
@@ -183,33 +208,29 @@ namespace Cards
         /// <param name="id">
         ///     The id.
         /// </param>
-        public void DeleteRowById(string id)
+        /// <param name="errorMessage">
+        ///     The error message.
+        /// </param>
+        public void DeleteRowById(string id, out string erroMessage)
         {
             SqlConnection connection = null;
+
+            erroMessage = null;
 
             try
             {
                 using (connection = new SqlConnection(DefaultConnectionString))
                 {
-                    using (var command = new SqlCommand(DeleteQueryById, connection))
-                    {
-                        command.Parameters.Add(new SqlParameter("@id", id));
+                    var command = new SqlCommand(DeleteQueryById, connection);
+                    command.Parameters.Add(new SqlParameter("@id", id));
 
-                        connection.Open();
-                        command.ExecuteReader();
-                    }
+                    connection.Open();
+                    command.ExecuteReader();
                 }
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-
-            }
-            finally
-            {
-                if (connection != null && connection.State == ConnectionState.Open)
-                {
-                    connection.Close();
-                }
+                erroMessage = ex.Message;
             }
         }
 
@@ -228,38 +249,32 @@ namespace Cards
         /// <param name="accountNumber">
         ///     The account number.
         /// </param>
-        public void AddCard(string id, string pin, string serialNumber, string accountNumber)
+        /// <param name="errorMessage">
+        ///     The error message.
+        /// </param>
+        public void AddCard(string id, string pin, string serialNumber, string accountNumber, out string errorMessage)
         {
-            SqlConnection connection = null;
+            errorMessage = null;
 
             try
             {
-                using (connection = new SqlConnection(DefaultConnectionString))
+                using (var connection = new SqlConnection(DefaultConnectionString))
                 {
-                    using (var command = new SqlCommand(DeleteQueryById, connection))
-                    {
-                        command.CommandText = InsertQueryString;
+                    var command = new SqlCommand(DeleteQueryById, connection);
+                    command.CommandText = InsertQueryString;
 
-                        command.Parameters.AddWithValue("@id", id);
-                        command.Parameters.AddWithValue("@pin", pin);
-                        command.Parameters.AddWithValue("@serialNumber", serialNumber);
-                        command.Parameters.AddWithValue("@accountNumber", accountNumber);
+                    command.Parameters.AddWithValue("@id", id);
+                    command.Parameters.AddWithValue("@pin", pin);
+                    command.Parameters.AddWithValue("@serialNumber", serialNumber);
+                    command.Parameters.AddWithValue("@accountNumber", accountNumber);
 
-                        connection.Open();
-                        command.ExecuteReader();
-                    }
+                    connection.Open();
+                    command.ExecuteReader();
                 }
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-
-            }
-            finally
-            {
-                if (connection != null && connection.State == ConnectionState.Open)
-                {
-                    connection.Close();
-                }
+                errorMessage = ex.Message;
             }
         }
 
@@ -275,43 +290,37 @@ namespace Cards
         /// <param name="accountNumber">
         ///     The account number.
         /// </param>
+        /// <param name="errorMessage">
+        ///     The error message.
+        /// </param>
         /// <returns>
         ///     The list of duplicated values.
         /// </returns>
-        public DataTable GetSelectedData(string id, string serialNumber, string accountNumber)
+        public DataTable GetSelectedData(string id, string serialNumber, string accountNumber, out string errorMessage)
         {
             var dt = new DataTable();
 
-            SqlConnection connection = null;
+            errorMessage = null;
 
             try
             {
-                using (connection = new SqlConnection(DefaultConnectionString))
+                using (var connection = new SqlConnection(DefaultConnectionString))
                 {
-                    using (var command = new SqlCommand(ValidationSelectQuery, connection))
-                    {
-                        command.Parameters.AddWithValue("@id", id);
-                        command.Parameters.AddWithValue("@serialNumber", serialNumber);
-                        command.Parameters.AddWithValue("@accountNumber", accountNumber);
+                    var command = new SqlCommand(ValidationSelectQuery, connection);
+                    command.Parameters.AddWithValue("@id", id);
+                    command.Parameters.AddWithValue("@serialNumber", serialNumber);
+                    command.Parameters.AddWithValue("@accountNumber", accountNumber);
 
-                        connection.Open();
-                        using (var reader = command.ExecuteReader())
-                        {
-                            dt.Load(reader);
-                        }
+                    connection.Open();
+                    using (var reader = command.ExecuteReader())
+                    {
+                        dt.Load(reader);
                     }
                 }
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-
-            }
-            finally
-            {
-                if (connection != null && connection.State == ConnectionState.Open)
-                {
-                    connection.Close();
-                }
+                errorMessage = ex.Message;
             }
 
             return dt;

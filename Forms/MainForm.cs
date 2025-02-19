@@ -36,9 +36,8 @@ namespace Cards
         public MainForm()
         {
             InitializeComponent();
-            var errorMessage = this.DataConnector.CreateDataBaseIfNotExist();
             
-            if (errorMessage != null)
+            if (!this.DataConnector.CreateDataBaseIfNotExist(out string errorMessage))
             {
                 MessageBox.Show(errorMessage);
             }
@@ -52,7 +51,12 @@ namespace Cards
         private void GetDataToGridView()
         {
             dataGridView1.DataSource = DataConnector.GetData(this.FilteredId.Text,
-                this.FilteredSerialNumber.Text, this.FilteredAccountNumber.Text);
+                this.FilteredSerialNumber.Text, this.FilteredAccountNumber.Text, out string errorMesage);
+
+            if (errorMesage != null)
+            {
+                MessageBox.Show(errorMesage);
+            }
 
             dataGridView1.Sort(dataGridView1.Columns[1], ListSortDirection.Ascending);
             dataGridView1.Update();
@@ -102,7 +106,12 @@ namespace Cards
                 return;
             }
 
-            this.DataConnector.DeleteRowById(id);
+            this.DataConnector.DeleteRowById(id,out string errorMessage);
+
+            if (errorMessage != null)
+            {
+                MessageBox.Show(errorMessage);
+            }
 
             this.GetDataToGridView();
         }
